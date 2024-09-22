@@ -169,31 +169,6 @@ def generate_plot(df, wave_columns, file_name, folder_path, min_wavelength, max_
     fig.write_html(output_file)
     print(f"Plot saved as {output_file}")
 
-# Main function to process all files in the folder
-def process_files_in_folder(base_folder, min_wavelength, max_wavelength, total_points):
-    # Define the folder path for 'Physics Research'
-    folder_path = os.path.join(os.path.expanduser('~'), 'Documents', base_folder)
-    
-    # Loop through all CSV files in the folder
-    for filename in os.listdir(folder_path):
-        if filename.endswith('.csv'):
-            file_path = os.path.join(folder_path, filename)
-            file_name = filename.replace('.csv', '')
-            print(f"Processing {file_path}")
-            
-            # Step 1: Process and refactor the original CSV
-            refactored_df, wave_columns = process_csv(file_path)
-            
-            # Step 2: Save the refactored CSV in a new folder named after the original file
-            refactored_file_path = save_refactored_csv(refactored_df, file_name, folder_path)
-            
-            # Step 3: Read the refactored CSV and generate the graph (with peak detection)
-            refactored_df = pd.read_csv(refactored_file_path)
-            generate_plot(refactored_df, wave_columns, file_name, folder_path, min_wavelength, max_wavelength, total_points)
-
-# Run the function to process and refactor all CSVs in the folder
-process_files_in_folder('Physics Research', 1475, 1575, 1000)
-
 # Define the Gaussian function for curve fitting
 def gauss(x, a, x0, sigma):
     return a * np.exp(-(x - x0) ** 2 / (2 * sigma ** 2))
@@ -333,24 +308,48 @@ def process_peaks_for_each_csv(folder_path, original_file_name, wpre="wave", wle
                 # Call trackgauss4 for each peak
                 trackgauss4(wpre, 1, 1, 546, wlen, suffix, start, stop, width, folder_path, original_file_name)
 
-# Function to process all CSV files in the 'Physics Research' folder
-def process_all_csv_files_in_folder(base_folder):
-    folder_path = os.path.join(os.path.expanduser('~'), 'Documents', base_folder)
+def get_folder_path():
+    user_input = input("Enter the folder path (or press Enter to use 'Physics Research' as default): ").strip()
+    if user_input:
+        base_folder = user_input
+    else:
+        base_folder = 'Physics Research'
+    return os.path.join(os.path.expanduser('~'), 'Documents', base_folder)
+
+def process_all_csv_files_in_folder():
+    folder_path = get_folder_path()
     
-    # Iterate through each CSV file in the 'Physics Research' folder
+    if not os.path.exists(folder_path):
+        print(f"The folder '{folder_path}' does not exist. Please check the path and try again.")
+        return
+    
+    print(f"Processing files in: {folder_path}")
+    
+    # First, process and refactor all CSV files
+    for filename in os.listdir(folder_path):
+        if filename.endswith('.csv'):
+            file_path = os.path.join(folder_path, filename)
+            file_name = filename.replace('.csv', '')
+            print(f"Processing {file_path}")
+            
+            # Step 1: Process and refactor the original CSV
+            refactored_df, wave_columns = process_csv(file_path)
+            
+            # Step 2: Save the refactored CSV in a new folder named after the original file
+            refactored_file_path = save_refactored_csv(refactored_df, file_name, folder_path)
+            
+            # Step 3: Read the refactored CSV and generate the graph (with peak detection)
+            refactored_df = pd.read_csv(refactored_file_path)
+            generate_plot(refactored_df, wave_columns, file_name, folder_path, 1475, 1575, 1000)
+    
+    # Then, process peaks for each CSV file
     for filename in os.listdir(folder_path):
         if filename.endswith('.csv'):
             file_name = filename.replace('.csv', '')
-            print(f"Processing file: {file_name}")
-            
-            # Create a new folder for each CSV file
-            csv_folder = os.path.join(folder_path, file_name)
-            os.makedirs(csv_folder, exist_ok=True)
-            
-            # Process all peaks for each CSV
+            print(f"Processing peaks for file: {file_name}")
             process_peaks_for_each_csv(folder_path, file_name)
 
-# Run the function to process all CSV files in the 'Physics Research' folder
-process_all_csv_files_in_folder('Physics Research')
+if __name__ == "__main__":
+    process_all_csv_files_in_folder()
 
 
