@@ -6,6 +6,7 @@ from scipy.signal import find_peaks, savgol_filter, peak_widths
 from scipy.optimize import curve_fit
 import matplotlib.pyplot as plt
 
+
 # Function to process the CSV file
 def process_csv(file_path):
     # Read the original CSV file
@@ -15,9 +16,9 @@ def process_csv(file_path):
     wave_columns = ['wave0'] + [f'wave{i}' for i in range(1, df.shape[1])]
 
     # Extract temp1, temp2, and tim rows
-    temp1 = df.iloc[0].values
-    temp2 = df.iloc[1].values
-    tim = df.iloc[2].values
+    temp1 = df.iloc[0, 1:].values
+    temp2 = df.iloc[1, 1:].values
+    tim = df.iloc[2, 1:].values
     
     # Drop the first three rows from the original data (since they are temp1, temp2, tim)
     wave_data = df.iloc[3:].reset_index(drop=True)
@@ -53,7 +54,7 @@ def find_peaks_and_widths(y_data, x_data):
     smoothed = savgol_filter(y_data, window_length=11, polyorder=3)
     
     # Find peaks
-    peaks, properties = find_peaks(smoothed, prominence=0.0003, height=0, distance=1, width=2)
+    peaks, properties = find_peaks(smoothed, prominence=0.00005, height=0, distance=1, width=1)
     
     # Calculate peak widths using the rel_height parameter (same approach as provided)
     widths_raw, width_heights, left_ips, right_ips = peak_widths(smoothed, peaks, rel_height=0.5)
@@ -172,9 +173,14 @@ def generate_plot(df, wave_columns, file_name, folder_path, min_wavelength, max_
 # Define the Gaussian function for curve fitting
 def gauss(x, a, x0, sigma):
     return a * np.exp(-(x - x0) ** 2 / (2 * sigma ** 2))
+from plotly.subplots import make_subplots
 
-# Main function equivalent to trackgauss4
 def trackgauss4(wpre, stnum, increment, endnum, wlen, suffix, start, stop, width, folder_path, original_file_name):
+
+    # Load the refactored CSV from the correct subfolder
+    refactored_csv_path = os.path.join(folder_path, original_file_name, f'refactored_{original_file_name}.csv')
+    df = pd.read_csv(refactored_csv_path)
+
     imax = int(np.floor((endnum - stnum) / increment) + 1)
     
     # Initialize arrays to store peak values, errors, temperatures, and times
@@ -182,11 +188,7 @@ def trackgauss4(wpre, stnum, increment, endnum, wlen, suffix, start, stop, width
     erruse = np.zeros(imax)
     tempuse = np.zeros(imax)
     timeuse = np.zeros(imax)
-    
-    # Load the refactored CSV from the correct subfolder
-    refactored_csv_path = os.path.join(folder_path, original_file_name, f'refactored_{original_file_name}.csv')
-    df = pd.read_csv(refactored_csv_path)
-    
+
     # Extract temperature and timing from CSV
     temperature = df['temp1'].values
     timing = df['tim'].values
@@ -246,39 +248,39 @@ def trackgauss4(wpre, stnum, increment, endnum, wlen, suffix, start, stop, width
         else:
             print(f"Warning: Invalid slice for wave {wave_col}")
     
-    # Create the interactive Plotly graph with dual y-axes
-    fig = go.Figure()
+    # Create the interactive Plotly graph with separate subplots
+    fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.02,
+                        row_heights=[0.3, 0.7])
 
-    # Add the peak wavelength (nm) on the left y-axis
+    # Add the temperature (°C) on the top subplot
+    fig.add_trace(go.Scatter(
+        x=timeuse, y=tempuse, mode='lines', name=f'Temperature {suffix} (°C)',
+        line=dict(color='blue')
+    ), row=1, col=1)
+
+    # Add the peak wavelength (nm) on the bottom subplot
     fig.add_trace(go.Scatter(
         x=timeuse, y=peakuse, mode='lines', name=f'Peak {suffix} (Wavelength)',
         line=dict(color='red')
-    ))
+    ), row=2, col=1)
 
-    # Add the temperature (°C) on the right y-axis
-    fig.add_trace(go.Scatter(
-        x=timeuse, y=tempuse, mode='lines', name=f'Temperature {suffix} (°C)',
-        line=dict(color='blue'), yaxis='y2'
-    ))
-
-    # Update layout for dual y-axes
+    # Update layout for both subplots
     fig.update_layout(
         title=f'Peak Wavelength and Temperature for Peak {suffix}',
         xaxis_title='Time (seconds)',
-        yaxis=dict(
-            title='Peak Wavelength (nm)',
-            titlefont=dict(color='red'),
-            tickfont=dict(color='red')
-        ),
-        yaxis2=dict(
-            title='Temperature (°C)',
-            titlefont=dict(color='blue'),
-            tickfont=dict(color='blue'),
-            overlaying='y',
-            side='right'
-        ),
-        legend=dict(x=0.01, y=0.99)
+        height=800,  # Increase overall height of the figure
+        showlegend=True,
+        legend=dict(x=0.01, y=0.99, orientation='h')
     )
+
+    # Update y-axis titles
+    fig.update_yaxes(title_text="Temperature (°C)", row=1, col=1)
+    fig.update_yaxes(title_text="Peak Wavelength (nm)", row=2, col=1)
+
+    # Adjust the range of the temperature subplot to zoom out
+    temp_min, temp_max = min(tempuse), max(tempuse)
+    temp_range = temp_max - temp_min
+    fig.update_yaxes(range=[temp_min - 0.1*temp_range, temp_max + 0.1*temp_range], row=1, col=1)
 
     # Save the plot as an interactive HTML file
     output_html_path = os.path.join(folder_path, original_file_name, "gaussian fit", f"plot_{suffix}.html")
@@ -287,7 +289,7 @@ def trackgauss4(wpre, stnum, increment, endnum, wlen, suffix, start, stop, width
     print(f"Interactive plot saved as {output_html_path}")
 
 # Process all peaks for each CSV file in the folder
-def process_peaks_for_each_csv(folder_path, original_file_name, wpre="wave", wlen="wave0"):
+def process_peaks_for_each_csv(folder_path, original_file_name, endnum, wpre="wave", wlen="wave0"):
     # Path to the folder containing the peak widths CSVs
     csv_folder = os.path.join(folder_path, original_file_name)
     
@@ -306,7 +308,7 @@ def process_peaks_for_each_csv(folder_path, original_file_name, wpre="wave", wle
                 width = int(row['pnt_width'])
                 
                 # Call trackgauss4 for each peak
-                trackgauss4(wpre, 1, 1, 546, wlen, suffix, start, stop, width, folder_path, original_file_name)
+                trackgauss4(wpre, 1, 1, endnum, wlen, suffix, start, stop, width, folder_path, original_file_name)
 
 def get_folder_path():
     user_input = input("Enter the folder path (or press Enter to use 'Physics Research' as default): ").strip()
@@ -340,6 +342,9 @@ def process_all_csv_files_in_folder():
             
             # Step 3: Read the refactored CSV and generate the graph (with peak detection)
             refactored_df = pd.read_csv(refactored_file_path)
+            wave_columns = [col for col in refactored_df.columns if col.startswith('wave')]
+            endnum = len(wave_columns) - 1  # Get the number of wave columns
+            print(endnum)
             generate_plot(refactored_df, wave_columns, file_name, folder_path, 1475, 1575, 1000)
     
     # Then, process peaks for each CSV file
@@ -347,7 +352,7 @@ def process_all_csv_files_in_folder():
         if filename.endswith('.csv'):
             file_name = filename.replace('.csv', '')
             print(f"Processing peaks for file: {file_name}")
-            process_peaks_for_each_csv(folder_path, file_name)
+            process_peaks_for_each_csv(folder_path, file_name, endnum)
 
 if __name__ == "__main__":
     process_all_csv_files_in_folder()
